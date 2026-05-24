@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  Int       @id @default(autoincrement())
+  username            String    @unique @db.VarChar(50)
+  email               String    @unique @db.VarChar(150)
+  password            String    @db.VarChar(255)
+  full_name           String    @db.VarChar(100)
+  phone               String?   @db.VarChar(20)
+  role                String    @db.VarChar(20)
+  status              String    @db.VarChar(20)
+  is_verified         Boolean   @default(false)
+  verification_token  String?   @db.VarChar(128)
+  failed_login_attempts Int     @default(0)
+  lock_until          DateTime? @db.DateTime(0)
+  created_at          DateTime  @default(now()) @map("created_at")
+  updated_at          DateTime  @updatedAt @map("updated_at")
+
+  reservations           Reservation[]
+  processedReservations  Reservation[]  @relation("ProcessedBy")
+  incidentTickets        IncidentTicket[] @relation("ReportedBy")
+  assignedIncidents      IncidentTicket[] @relation("AssignedTo")
+  refreshTokens          RefreshToken[]
+  passwordResetTokens    PasswordResetToken[]
+
+  @@map("users")
+}
+
+model LabRoom {
+  id          Int       @id @default(autoincrement())
+  room_code   String    @unique @db.VarChar(50)
+  name        String    @db.VarChar(150)
+  location    String    @db.VarChar(255)
+  capacity    Int
+  description String?   @db.Text
+  status      String    @db.VarChar(20)
+  created_at  DateTime  @default(now()) @map("created_at")
+  updated_at  DateTime  @updatedAt @map("updated_at")
+
+  workstations Workstation[]
+  reservations Reservation[]
+  incidentTickets IncidentTicket[]
+
+  @@map("lab_rooms")
+}
+
+model Workstation {
+  id          Int      @id @default(autoincrement())
+  lab_room_id Int      @map("lab_room_id")
+  station_code String  @db.VarChar(50)
+  ip_address   String? @db.VarChar(45)
+  mac_address  String? @db.VarChar(17)
+  cpu          String? @db.VarChar(100)
+  ram_gb       Int?    @map("ram_gb")
+  gpu          String? @db.VarChar(100)
+  os           String? @db.VarChar(100)
+  state        String  @db.VarChar(20)
+  created_at   DateTime @default(now()) @map("created_at")
+  updated_at   DateTime @updatedAt @map("updated_at")
+
+  lab_room         LabRoom          @relation(fields: [lab_room_id], references: [id], onDelete: Cascade)
+  reservations     Reservation[]
+  incidentTickets  IncidentTicket[]
+
+  @@unique([lab_room_id, station_code])
+  @@map("workstations")
+}
+
+model Reservation {
+  id              Int       @id @default(autoincrement())
+  user_id         Int       @map("user_id")
+  resource_type   String    @db.VarChar(20)
+  lab_room_id     Int?      @map("lab_room_id")
+  workstation_id  Int?      @map("workstation_id")
+  start_time      DateTime  @db.DateTime(0)
+  end_time        DateTime  @db.DateTime(0)
+  purpose         String?   @db.VarChar(500)
+  expected_users  Int?      @map("expected_users")
+  status          String    @db.VarChar(20)
+  reject_reason   String?   @db.VarChar(500)
+  processed_by    Int?      @map("processed_by")
+  processed_at    DateTime? @db.DateTime(0)
+  created_at      DateTime  @default(now()) @map("created_at")
+  updated_at      DateTime  @updatedAt @map("updated_at")
+
+  user            User     @relation(fields: [user_id], references: [id])
+  lab_room        LabRoom? @relation(fields: [lab_room_id], references: [id])
+  workstation     Workstation? @relation(fields: [workstation_id], references: [id])
+  processedByUser User?    @relation("ProcessedBy", fields: [processed_by], references: [id])
+
+  @@index([user_id])
+  @@index([lab_room_id])
+  @@index([workstation_id])
+  @@index([status])
+  @@map("reservations")
+}
+
+model IncidentTicket {
+  id              Int       @id @default(autoincrement())
+  reporter_id     Int       @map("reporter_id")
+  workstation_id  Int?      @map("workstation_id")
+  lab_room_id     Int?      @map("lab_room_id")
+  category        String    @db.VarChar(20)
+  description     String   @db.Text
+  status          String   @db.VarChar(20)
+  assigned_to     Int?     @map("assigned_to")
+  resolution_note String?  @db.Text
+  created_at      DateTime  @default(now()) @map("created_at")
+  updated_at      DateTime  @updatedAt @map("updated_at")
+  resolved_at     DateTime? @db.DateTime(0)
+
+  reporter     User         @relation("ReportedBy", fields: [reporter_id], references: [id])
+  workstation Workstation? @relation(fields: [workstation_id], references: [id])
+  lab_room     LabRoom?     @relation(fields: [lab_room_id], references: [id])
+  assignedUser User?        @relation("AssignedTo", fields: [assigned_to], references: [id])
+
+  @@index([reporter_id])
+  @@index([status])
+  @@index([assigned_to])
+  @@map("incident_tickets")
+}
+
+model RefreshToken {
+  id         Int      @id @default(autoincrement())
+  user_id    Int      @map("user_id")
+  token_hash String   @map("token_hash") @db.Char(64)
+  expires_at DateTime @map("expires_at") @db.DateTime(0)
+  created_at DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([token_hash])
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id         Int      @id @default(autoincrement())
+  user_id    Int      @map("user_id")
+  token_hash String   @map("token_hash") @db.Char(64)
+  expires_at DateTime @map("expires_at") @db.DateTime(0)
+  used       Boolean  @default(false)
+  created_at DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([token_hash])
+  @@map("password_reset_tokens")
+}
